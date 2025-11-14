@@ -1,5 +1,5 @@
 import { wrapInputStream } from 'webuix';
-import { exec, spawn, toast, listPackages, getPackagesInfo, getPackagesIcon } from 'kernelsu-alt';
+import { exec, spawn, toast, listPackages, getPackagesInfo } from 'kernelsu-alt';
 import { basePath, loadingIndicator, appsWithExclamation, appsWithQuestion, checkSukiSu } from './main.js';
 
 const appTemplate = document.getElementById('app-template').content;
@@ -32,12 +32,12 @@ export async function fetchAppList() {
             return map;
         }, {});
     } catch (error) {
-        if (typeof ksu === 'undefined') {
+        if (import.meta.env.DEV) {
             appNameMap = {
                 "com.example.one": "One",
                 "com.example.two": "Two",
                 "com.example.three": "Three"
-            };
+            }
         } else {
             console.warn("Failed to fetch applist.json:", error);
             appNameMap = {};
@@ -62,7 +62,7 @@ export async function fetchAppList() {
 
     installedPackages = Array.from(new Set(installedPackages));
 
-    if (typeof ksu === 'undefined') {
+    if (import.meta.env.DEV) {
         installedPackages = [
             "com.example.one",
             "com.example.two",
@@ -75,46 +75,49 @@ export async function fetchAppList() {
 
     // Create appEntries array contain { appName, packageName }
     appEntries = await Promise.all(installedPackages.map(async (packageName) => {
-        // Look from cached result
-        if (appNameMap[packageName] && appNameMap[packageName].trim() !== '') {
-            return {
-                appName: appNameMap[packageName].trim(),
-                packageName
-            };
-        }
-
         try {
-            // KernelSU-Next package manager API
-            const info = await getPackagesInfo(packageName);
-            return {
-                appName: info.appLabel,
-                packageName
-            };
-        } catch (error) {
+            // KernelSU package manager API
+            if (typeof globalThis.ksu?.getPackagesInfo !== 'function') {
+                const info = await getPackagesInfo(packageName);
+                return {
+                    appName: info.appLabel,
+                    packageName
+                }
+            }
             // WebUI-X package manager API
             if (typeof $packageManager !== 'undefined') {
                 const info = $packageManager.getApplicationInfo(packageName, 0, 0);
                 return {
                     appName: info.getLabel(),
                     packageName
-                };
+                }
             }
-            // Fallback with aapt
-            return new Promise((resolve) => {
-                const output = spawn('sh', [`${basePath}/common/get_extra.sh`, '--appname', packageName],
-                                { env: { PATH: `$PATH:${basePath}/common/bin:/data/data/com.termux/files/usr/bin` } });
-                output.stdout.on('data', (data) => {
-                    resolve({
-                        appName: data.trim() === '' ? packageName : data.trim(),
-                        packageName
+            throw new Error('No pm api found, fallback to old method');
+        } catch (error) {
+            // Look from cached result
+            if (appNameMap[packageName] && appNameMap[packageName].trim() !== '') {
+                return {
+                    appName: appNameMap[packageName].trim(),
+                    packageName
+                }
+            } else {
+                // Fallback with aapt
+                return new Promise((resolve) => {
+                    const output = spawn('sh', [`${basePath}/common/get_extra.sh`, '--appname', packageName],
+                                    { env: { PATH: `$PATH:${basePath}/common/bin:/data/data/com.termux/files/usr/bin` } });
+                    output.stdout.on('data', (data) => {
+                        resolve({
+                            appName: data.trim() === '' ? packageName : data.trim(),
+                            packageName
+                        });
+                    });
+                    output.on('exit', (code) => {
+                        if (code !== 0) {
+                            resolve({ appName: packageName, packageName });
+                        }
                     });
                 });
-                output.on('exit', (code) => {
-                    if (code !== 0) {
-                        resolve({ appName: packageName, packageName });
-                    }
-                });
-            });
+            }
         }
     }));
     renderAppList(appEntries);
@@ -142,7 +145,7 @@ function renderAppList(data) {
     document.querySelector('.floating-btn').classList.remove('hide');
     if (updateCard) appListContainer.appendChild(updateCard);
     let showIcon = false;
-    if (typeof $packageManager !== 'undefined' ||(typeof ksu !== 'undefined' && typeof ksu.getPackagesIcons === 'function')) {
+    if (typeof $packageManager !== 'undefined' || (typeof globalThis.ksu?.listPackages === 'function')) {
         showIcon = true;
     }
 
@@ -223,20 +226,19 @@ function loadIcons(packageName) {
     const imgElement = document.querySelector(`.app-icon[data-package="${packageName}"]`);
     const loader = document.querySelector(`.loader[data-package="${packageName}"]`);
 
-    if (iconCache.has(packageName)) {
+    if (typeof globalThis.ksu?.getPackagesInfo === 'function') {
+        imgElement.onload = () => {
+            loader.style.display = 'none';
+            imgElement.style.opacity = '1';
+        }
+        imgElement.onerror = () => {
+            // tbc
+        }
+        imgElement.src = "ksu://icon/" + packageName;
+    } else if (iconCache.has(packageName)) {
         imgElement.src = iconCache.get(packageName);
         loader.style.display = 'none';
         imgElement.style.opacity = '1';
-    } else if (typeof ksu.getPackagesIcons === 'function') {
-        getPackagesIcon(packageName, 100).then(app => {
-            iconCache.set(packageName, app.icon);
-            imgElement.src = app.icon;
-            loader.style.display = 'none';
-            imgElement.style.opacity = '1';
-        }).catch(error => {
-            console.error('Failed to load icon:', error);
-            loader.style.display = 'none';
-        });
     } else if (typeof $packageManager !== 'undefined') {
         const stream = $packageManager.getApplicationIcon(packageName, 0, 0);
         wrapInputStream(stream)

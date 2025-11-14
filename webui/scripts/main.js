@@ -90,7 +90,7 @@ function checkTrickyStoreVersion() {
             echo $TS_version
         fi
     `).then(({ stdout }) => {
-        if (stdout.trim() === "0" || typeof ksu === 'undefined') {
+        if (stdout.trim() === "0" || import.meta.env.DEV) {
             securityPatchElement.style.display = "flex";
         } else {
             console.log("Tricky Store version:", stdout.trim());
