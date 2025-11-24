@@ -10,9 +10,9 @@
     <script type="module" crossorigin src="./scripts/boot_hash.js"></script>
     <script type="module" crossorigin src="./scripts/security_patch.js"></script>
 </head>
-<body unresolved>
+<body>
     <!-- Header -->
-    <div class="header header-bg">
+    <div class="header header-bg" unresolved>
         <div id="title" class="search-bg" data-i18n="header_title"></div>
         <md-icon-button class="search-button search-bg" id="search-button">
             <md-icon>search</md-icon>
@@ -97,7 +97,7 @@
     </template>
 
     <!-- Dialog -->
-    <div class="dialog-wrapper">
+    <div class="dialog-wrapper" unresolved>
         <!-- Mode selection dialog (opened on long-press) -->
         <md-dialog id="mode-dialog">
             <div slot="headline" data-i18n="mode_dialog_title"></div>
